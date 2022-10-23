@@ -30,7 +30,7 @@ func init() {
 		funcs: make(map[ast.NodeKind]goldRend.NodeRendererFunc),
 	}
 
-	renderer.NewRenderer().RegisterFuncs(caller)
+	renderer.NewMarkdown().RegisterFuncs(caller)
 }
 
 func runTestCase(t *testing.T, in, want string) {
@@ -41,6 +41,8 @@ func runTestCase(t *testing.T, in, want string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	node.Dump(inBytes, 4)
 
 	if got != want {
 		node.Dump(inBytes, 4)
@@ -117,6 +119,16 @@ func TestRenderer_NestedUnorderedList_LargeIndent(t *testing.T) { // indent widt
 
 func TestRenderer_BlockQuotes(t *testing.T) {
 	in := "> quote 1\nquote 2\nquote 3\n" // parser is lazy: https://spec.commonmark.org/0.30/#example-233
+	runTestCase(t, in, in)
+}
+
+func TestRenderer_Link(t *testing.T) {
+	in := "[link label](guide1)\n"
+	runTestCase(t, in, in)
+}
+
+func TestRenderer_ImageLink(t *testing.T) {
+	in := "![link label](link_destination.png)\n"
 	runTestCase(t, in, in)
 }
 

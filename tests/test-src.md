@@ -42,6 +42,14 @@ test divider line
 this is a non-labeled fenced code block
 ```
 
+| foo | bar |
+| --- | --- |
+| baz | bim |
+
+> | foo | bar |
+> | --- | --- |
+> | baz | bim |
+
 ```go
     this is a code block
     with multiple lines

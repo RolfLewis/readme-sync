@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark/ast"
+	exast "github.com/yuin/goldmark/extension/ast"
 	goldmark "github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -24,7 +25,7 @@ type listState struct {
 	index   int
 }
 
-type renderer struct {
+type markdown struct {
 	listStack   []listState
 	openBlocks  []blockState
 	prefixStack []string
@@ -32,11 +33,11 @@ type renderer struct {
 	atNewline   bool
 }
 
-func NewRenderer() *renderer {
-	return &renderer{}
+func NewMarkdown() *markdown {
+	return &markdown{}
 }
 
-func (r *renderer) RegisterFuncs(reg goldmark.NodeRendererFuncRegisterer) {
+func (r *markdown) RegisterFuncs(reg goldmark.NodeRendererFuncRegisterer) {
 	// default registrations
 	// blocks
 	reg.Register(ast.KindDocument, r.renderDocument)
@@ -63,17 +64,17 @@ func (r *renderer) RegisterFuncs(reg goldmark.NodeRendererFuncRegisterer) {
 
 	// GFM Extensions
 	// Tables
-	// reg.Register(exast.KindTable, r.renderTable)
-	// reg.Register(exast.KindTableHeader, r.renderTableHeader)
-	// reg.Register(exast.KindTableRow, r.renderTableRow)
-	// reg.Register(exast.KindTableCell, r.renderTableCell)
-	// // Strikethrough
-	// reg.Register(exast.KindStrikethrough, r.renderStrikethrough)
-	// // Checkbox
-	// reg.Register(exast.KindTaskCheckBox, r.renderTaskCheckBox)
+	reg.Register(exast.KindTable, r.renderTable)
+	reg.Register(exast.KindTableHeader, r.renderTableHeader)
+	reg.Register(exast.KindTableRow, r.renderTableRow)
+	reg.Register(exast.KindTableCell, r.renderTableCell)
+	// Strikethrough
+	reg.Register(exast.KindStrikethrough, r.renderStrikethrough)
+	// Checkbox
+	reg.Register(exast.KindTaskCheckBox, r.renderTaskCheckBox)
 }
 
-func (r *renderer) write(w io.Writer, buf []byte) (int, error) {
+func (r *markdown) write(w io.Writer, buf []byte) (int, error) {
 	written := 0
 	for len(buf) > 0 {
 		if r.atNewline {
@@ -104,7 +105,7 @@ func (r *renderer) write(w io.Writer, buf []byte) (int, error) {
 	return written, nil
 }
 
-func (r *renderer) beginLine(w io.Writer) error {
+func (r *markdown) beginLine(w io.Writer) error {
 	if len(r.openBlocks) != 0 {
 		current := r.openBlocks[len(r.openBlocks)-1]
 		if current.node.Kind() == ast.KindParagraph && !current.fresh {
@@ -119,7 +120,7 @@ func (r *renderer) beginLine(w io.Writer) error {
 	return err
 }
 
-func (r *renderer) writeLines(w util.BufWriter, source []byte, lines *text.Segments) error {
+func (r *markdown) writeLines(w util.BufWriter, source []byte, lines *text.Segments) error {
 	for i := 0; i < lines.Len(); i++ {
 		line := lines.At(i)
 		if _, err := r.write(w, line.Value(source)); err != nil {
@@ -129,37 +130,37 @@ func (r *renderer) writeLines(w util.BufWriter, source []byte, lines *text.Segme
 	return nil
 }
 
-func (r *renderer) writeByte(w io.Writer, c byte) error {
+func (r *markdown) writeByte(w io.Writer, c byte) error {
 	_, err := r.write(w, []byte{c})
 	return err
 }
 
 // WriteString writes a string to an io.Writer, ensuring that appropriate indentation and prefices are added at the
 // beginning of each line.
-func (r *renderer) writeString(w io.Writer, s string) (int, error) {
+func (r *markdown) writeString(w io.Writer, s string) (int, error) {
 	return r.write(w, []byte(s))
 }
 
 // PushIndent adds the specified amount of indentation to the current line prefix.
-func (r *renderer) pushIndent(amount int) {
+func (r *markdown) pushIndent(amount int) {
 	r.pushPrefix(strings.Repeat(" ", amount))
 }
 
 // PushPrefix adds the specified string to the current line prefix.
-func (r *renderer) pushPrefix(prefix string) {
+func (r *markdown) pushPrefix(prefix string) {
 	r.prefixStack = append(r.prefixStack, prefix)
 	r.prefix = append(r.prefix, []byte(prefix)...)
 }
 
 // PopPrefix removes the last piece added by a call to PushIndent or PushPrefix from the current line prefix.
-func (r *renderer) popPrefix() {
+func (r *markdown) popPrefix() {
 	r.prefix = r.prefix[:len(r.prefix)-len(r.prefixStack[len(r.prefixStack)-1])]
 	r.prefixStack = r.prefixStack[:len(r.prefixStack)-1]
 }
 
 // OpenBlock ensures that each block begins on a new line, and that blank lines are inserted before blocks as
 // indicated by node.HasPreviousBlankLines.
-func (r *renderer) openBlock(w util.BufWriter, source []byte, node ast.Node) error {
+func (r *markdown) openBlock(w util.BufWriter, source []byte, node ast.Node) error {
 	r.openBlocks = append(r.openBlocks, blockState{
 		node:  node,
 		fresh: true,
@@ -191,7 +192,7 @@ func (r *renderer) openBlock(w util.BufWriter, source []byte, node ast.Node) err
 }
 
 // CloseBlock marks the current block as closed.
-func (r *renderer) closeBlock(w io.Writer) error {
+func (r *markdown) closeBlock(w io.Writer) error {
 	if !r.atNewline {
 		if err := r.writeByte(w, '\n'); err != nil {
 			return err
@@ -203,13 +204,13 @@ func (r *renderer) closeBlock(w io.Writer) error {
 }
 
 // RenderDocument renders an *ast.Document node to the given BufWriter.
-func (r *renderer) renderDocument(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderDocument(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	r.listStack, r.prefixStack, r.prefix, r.atNewline = nil, nil, nil, false
 	return ast.WalkContinue, nil
 }
 
 // RenderHeading renders an *ast.Heading node to the given BufWriter.
-func (r *renderer) renderHeading(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderHeading(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		if err := r.openBlock(w, source, node); err != nil {
 			return ast.WalkStop, err
@@ -236,7 +237,7 @@ func (r *renderer) renderHeading(w util.BufWriter, source []byte, node ast.Node,
 }
 
 // RenderBlockquote renders an *ast.Blockquote node to the given BufWriter.
-func (r *renderer) renderBlockquote(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderBlockquote(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		if err := r.openBlock(w, source, node); err != nil {
 			return ast.WalkStop, err
@@ -259,7 +260,7 @@ func (r *renderer) renderBlockquote(w util.BufWriter, source []byte, node ast.No
 }
 
 // RenderCodeBlock renders an *ast.CodeBlock node to the given BufWriter.
-func (r *renderer) renderCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		if err := r.closeBlock(w); err != nil {
 			return ast.WalkStop, err
@@ -289,7 +290,7 @@ func (r *renderer) renderCodeBlock(w util.BufWriter, source []byte, node ast.Nod
 }
 
 // RenderFencedCodeBlock renders an *ast.FencedCodeBlock node to the given BufWriter.
-func (r *renderer) renderFencedCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderFencedCodeBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		if err := r.closeBlock(w); err != nil {
 			return ast.WalkStop, err
@@ -336,7 +337,7 @@ func (r *renderer) renderFencedCodeBlock(w util.BufWriter, source []byte, node a
 }
 
 // RenderHTMLBlock renders an *ast.HTMLBlock node to the given BufWriter.
-func (r *renderer) renderHTMLBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderHTMLBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		if err := r.closeBlock(w); err != nil {
 			return ast.WalkStop, err
@@ -365,7 +366,7 @@ func (r *renderer) renderHTMLBlock(w util.BufWriter, source []byte, node ast.Nod
 }
 
 // RenderList renders an *ast.List node to the given BufWriter.
-func (r *renderer) renderList(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderList(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		if err := r.openBlock(w, source, node); err != nil {
 			return ast.WalkStop, err
@@ -388,7 +389,7 @@ func (r *renderer) renderList(w util.BufWriter, source []byte, node ast.Node, en
 }
 
 // RenderListItem renders an *ast.ListItem node to the given BufWriter.
-func (r *renderer) renderListItem(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderListItem(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		if err := r.openBlock(w, source, node); err != nil {
 			return ast.WalkStop, err
@@ -422,7 +423,7 @@ func (r *renderer) renderListItem(w util.BufWriter, source []byte, node ast.Node
 }
 
 // RenderParagraph renders an *ast.Paragraph node to the given BufWriter.
-func (r *renderer) renderParagraph(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderParagraph(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		// A paragraph that follows another paragraph or a blockquote must be preceded by a blank line.
 		if !node.HasBlankPreviousLines() {
@@ -446,7 +447,7 @@ func (r *renderer) renderParagraph(w util.BufWriter, source []byte, node ast.Nod
 }
 
 // RenderTextBlock renders an *ast.TextBlock node to the given BufWriter.
-func (r *renderer) renderTextBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderTextBlock(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if enter {
 		if err := r.openBlock(w, source, node); err != nil {
 			return ast.WalkStop, err
@@ -461,7 +462,7 @@ func (r *renderer) renderTextBlock(w util.BufWriter, source []byte, node ast.Nod
 }
 
 // RenderThematicBreak renders an *ast.ThematicBreak node to the given BufWriter.
-func (r *renderer) renderThematicBreak(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderThematicBreak(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		if err := r.closeBlock(w); err != nil {
 			return ast.WalkStop, err
@@ -481,7 +482,7 @@ func (r *renderer) renderThematicBreak(w util.BufWriter, source []byte, node ast
 }
 
 // RenderAutoLink renders an *ast.AutoLink node to the given BufWriter.
-func (r *renderer) renderAutoLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderAutoLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		return ast.WalkContinue, nil
 	}
@@ -499,7 +500,7 @@ func (r *renderer) renderAutoLink(w util.BufWriter, source []byte, node ast.Node
 	return ast.WalkContinue, nil
 }
 
-func (r *renderer) shouldPadCodeSpan(source []byte, node *ast.CodeSpan) bool {
+func (r *markdown) shouldPadCodeSpan(source []byte, node *ast.CodeSpan) bool {
 	c := node.FirstChild()
 	if c == nil {
 		return false
@@ -539,7 +540,7 @@ func (r *renderer) shouldPadCodeSpan(source []byte, node *ast.CodeSpan) bool {
 }
 
 // RenderCodeSpan renders an *ast.CodeSpan node to the given BufWriter.
-func (r *renderer) renderCodeSpan(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderCodeSpan(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		return ast.WalkContinue, nil
 	}
@@ -575,7 +576,7 @@ func (r *renderer) renderCodeSpan(w util.BufWriter, source []byte, node ast.Node
 }
 
 // RenderEmphasis renders an *ast.Emphasis node to the given BufWriter.
-func (r *renderer) renderEmphasis(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderEmphasis(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	em := node.(*ast.Emphasis)
 	if _, err := r.writeString(w, strings.Repeat("*", em.Level)); err != nil {
 		return ast.WalkStop, err
@@ -583,7 +584,7 @@ func (r *renderer) renderEmphasis(w util.BufWriter, source []byte, node ast.Node
 	return ast.WalkContinue, nil
 }
 
-func (r *renderer) escapeLinkDest(dest []byte) []byte {
+func (r *markdown) escapeLinkDest(dest []byte) []byte {
 	requiresEscaping := false
 	for _, c := range dest {
 		if c <= 32 || c == '(' || c == ')' || c == 127 {
@@ -607,7 +608,7 @@ func (r *renderer) escapeLinkDest(dest []byte) []byte {
 	return escaped
 }
 
-func (r *renderer) linkTitleDelimiter(title []byte) byte {
+func (r *markdown) linkTitleDelimiter(title []byte) byte {
 	for i, c := range title {
 		if c == '"' && (i == 0 || title[i-1] != '\\') {
 			return '\''
@@ -616,7 +617,7 @@ func (r *renderer) linkTitleDelimiter(title []byte) byte {
 	return '"'
 }
 
-func (r *renderer) renderLinkOrImage(w util.BufWriter, open string, dest, title []byte, enter bool) error {
+func (r *markdown) renderLinkOrImage(w util.BufWriter, open string, dest, title []byte, enter bool) error {
 	if enter {
 		if _, err := r.writeString(w, open); err != nil {
 			return err
@@ -644,7 +645,7 @@ func (r *renderer) renderLinkOrImage(w util.BufWriter, open string, dest, title 
 }
 
 // RenderImage renders an *ast.Image node to the given BufWriter.
-func (r *renderer) renderImage(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderImage(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	img := node.(*ast.Image)
 	if err := r.renderLinkOrImage(w, "![", img.Destination, img.Title, enter); err != nil {
 		return ast.WalkStop, err
@@ -653,7 +654,7 @@ func (r *renderer) renderImage(w util.BufWriter, source []byte, node ast.Node, e
 }
 
 // RenderLink renders an *ast.Link node to the given BufWriter.
-func (r *renderer) renderLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderLink(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	link := node.(*ast.Link)
 	if err := r.renderLinkOrImage(w, "[", link.Destination, link.Title, enter); err != nil {
 		return ast.WalkStop, err
@@ -662,7 +663,7 @@ func (r *renderer) renderLink(w util.BufWriter, source []byte, node ast.Node, en
 }
 
 // RenderRawHTML renders an *ast.RawHTML node to the given BufWriter.
-func (r *renderer) renderRawHTML(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderRawHTML(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		return ast.WalkSkipChildren, nil
 	}
@@ -679,7 +680,7 @@ func (r *renderer) renderRawHTML(w util.BufWriter, source []byte, node ast.Node,
 }
 
 // RenderText renders an *ast.Text node to the given BufWriter.
-func (r *renderer) renderText(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderText(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		return ast.WalkContinue, nil
 	}
@@ -705,7 +706,7 @@ func (r *renderer) renderText(w util.BufWriter, source []byte, node ast.Node, en
 }
 
 // RenderString renders an *ast.String node to the given BufWriter.
-func (r *renderer) renderString(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+func (r *markdown) renderString(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 	if !enter {
 		return ast.WalkContinue, nil
 	}
@@ -714,6 +715,93 @@ func (r *renderer) renderString(w util.BufWriter, source []byte, node ast.Node, 
 	if _, err := r.write(w, str.Value); err != nil {
 		return ast.WalkStop, err
 	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderTable(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		if err := r.openBlock(w, source, node); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if err := r.closeBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderTableHeader(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		if err := r.openBlock(w, source, node); err != nil {
+			return ast.WalkStop, err
+		}
+
+		if _, err := r.write(w, []byte("| ")); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if _, err := r.write(w, []byte(" |\n|")); err != nil {
+			return ast.WalkStop, err
+		}
+
+		for x := 0; x < node.ChildCount(); x++ { // use as column count
+			if _, err := r.write(w, []byte(" --- |")); err != nil {
+				return ast.WalkStop, err
+			}
+		}
+
+		if err := r.closeBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderTableRow(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		if err := r.openBlock(w, source, node); err != nil {
+			return ast.WalkStop, err
+		}
+
+		if _, err := r.write(w, []byte("| ")); err != nil {
+			return ast.WalkStop, err
+		}
+	} else {
+		if _, err := r.write(w, []byte(" |")); err != nil {
+			return ast.WalkStop, err
+		}
+
+		if err := r.closeBlock(w); err != nil {
+			return ast.WalkStop, err
+		}
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderTableCell(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	// cell := node.(*exast.TableCell)
+	if !enter {
+		if node.NextSibling() != nil {
+			if _, err := r.write(w, []byte(" | ")); err != nil {
+				return ast.WalkStop, err
+			}
+		}
+	}
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderStrikethrough(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+
+	return ast.WalkContinue, nil
+}
+
+func (r *markdown) renderTaskCheckBox(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
 
 	return ast.WalkContinue, nil
 }

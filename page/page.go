@@ -8,6 +8,8 @@ import (
 
 	"github.com/yuin/goldmark"
 	meta "github.com/yuin/goldmark-meta"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	gren "github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
 	"golang.org/x/xerrors"
@@ -27,7 +29,17 @@ func ProcessPage(ctx context.Context, path string) error {
 			),
 		),
 		goldmark.WithRenderer(
-			gren.NewRenderer(gren.WithNodeRenderers(util.Prioritized(renderer.NewRenderer(), 1000))),
+			gren.NewRenderer(gren.WithNodeRenderers(util.Prioritized(renderer.NewMarkdown(), 1000))),
+		),
+	)
+
+	// taken from https://github.com/yuin/goldmark/blob/master/extension/table.go
+	md.Parser().AddOptions(
+		parser.WithParagraphTransformers(
+			util.Prioritized(extension.NewTableParagraphTransformer(), 200),
+		),
+		parser.WithASTTransformers(
+			util.Prioritized(extension.NewTableASTTransformer(), 0),
 		),
 	)
 
