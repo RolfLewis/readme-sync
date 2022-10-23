@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -33,7 +32,6 @@ func main() {
 	command := os.Args[1]
 	arguments := os.Args[2:]
 
-	log.Println(command, arguments)
 	definition, valid := commands[command]
 	if !valid {
 		fmt.Printf("Invalid command provided: %v\n", command)
@@ -61,8 +59,6 @@ func push(ctx context.Context, fs *flag.FlagSet, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
-
-	fmt.Println(prune, dry, force, unhide, sourcePath, categoryList)
 
 	categories := strings.Split(categoryList, ",")
 
