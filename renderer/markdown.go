@@ -166,8 +166,14 @@ func (r *markdown) openBlock(w util.BufWriter, source []byte, node ast.Node) err
 		fresh: true,
 	})
 
-	// Work around the fact that the first child of a node notices the same set of preceding blank lines as its parent.
 	hasBlankPreviousLines := node.HasBlankPreviousLines()
+
+	// FIXME: standard goldmark table parser doesn't recognize Blank Previous Lines so we'll always add one
+	if node.Kind() == exast.KindTable {
+		hasBlankPreviousLines = true
+	}
+
+	// Work around the fact that the first child of a node notices the same set of preceding blank lines as its parent.
 	if p := node.Parent(); p != nil && p.FirstChild() == node {
 		if p.Kind() == ast.KindDocument || p.Kind() == ast.KindListItem || p.HasBlankPreviousLines() {
 			hasBlankPreviousLines = false
@@ -179,12 +185,6 @@ func (r *markdown) openBlock(w util.BufWriter, source []byte, node ast.Node) err
 			return err
 		}
 	}
-
-	// if ws := node.LeadingWhitespace(); ws.Len() != 0 {
-	// 	if _, err := r.write(w, ws.Value(source)); err != nil {
-	// 		return err
-	// 	}
-	// }
 
 	r.openBlocks[len(r.openBlocks)-1].fresh = true
 
@@ -739,16 +739,16 @@ func (r *markdown) renderTableHeader(w util.BufWriter, source []byte, node ast.N
 			return ast.WalkStop, err
 		}
 
-		if _, err := r.write(w, []byte("| ")); err != nil {
+		if _, err := r.writeString(w, "| "); err != nil {
 			return ast.WalkStop, err
 		}
 	} else {
-		if _, err := r.write(w, []byte(" |\n|")); err != nil {
+		if _, err := r.writeString(w, " |\n|"); err != nil {
 			return ast.WalkStop, err
 		}
 
 		for x := 0; x < node.ChildCount(); x++ { // use as column count
-			if _, err := r.write(w, []byte(" --- |")); err != nil {
+			if _, err := r.writeString(w, " --- |"); err != nil {
 				return ast.WalkStop, err
 			}
 		}
@@ -767,11 +767,11 @@ func (r *markdown) renderTableRow(w util.BufWriter, source []byte, node ast.Node
 			return ast.WalkStop, err
 		}
 
-		if _, err := r.write(w, []byte("| ")); err != nil {
+		if _, err := r.writeString(w, "| "); err != nil {
 			return ast.WalkStop, err
 		}
 	} else {
-		if _, err := r.write(w, []byte(" |")); err != nil {
+		if _, err := r.writeString(w, " |"); err != nil {
 			return ast.WalkStop, err
 		}
 
@@ -784,10 +784,9 @@ func (r *markdown) renderTableRow(w util.BufWriter, source []byte, node ast.Node
 }
 
 func (r *markdown) renderTableCell(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
-	// cell := node.(*exast.TableCell)
 	if !enter {
 		if node.NextSibling() != nil {
-			if _, err := r.write(w, []byte(" | ")); err != nil {
+			if _, err := r.writeString(w, " | "); err != nil {
 				return ast.WalkStop, err
 			}
 		}
@@ -797,11 +796,23 @@ func (r *markdown) renderTableCell(w util.BufWriter, source []byte, node ast.Nod
 }
 
 func (r *markdown) renderStrikethrough(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
-
+	if _, err := r.writeString(w, "~~"); err != nil {
+		return ast.WalkStop, err
+	}
 	return ast.WalkContinue, nil
 }
 
 func (r *markdown) renderTaskCheckBox(w util.BufWriter, source []byte, node ast.Node, enter bool) (ast.WalkStatus, error) {
+	if enter {
+		var fill byte = ' '
+		if task := node.(*exast.TaskCheckBox); task.IsChecked {
+			fill = 'x'
+		}
+
+		if _, err := r.write(w, []byte{'[', fill, ']', ' '}); err != nil {
+			return ast.WalkStop, err
+		}
+	}
 
 	return ast.WalkContinue, nil
 }

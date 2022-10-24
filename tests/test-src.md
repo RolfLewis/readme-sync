@@ -46,9 +46,17 @@ this is a non-labeled fenced code block
 | --- | --- |
 | baz | bim |
 
+| fooo | barr |
+| ---- | ---- |
+| bazz | bimm |
+
 > | foo | bar |
 > | --- | --- |
 > | baz | bim |
+
+- [] task list
+- [ ] task 2
+- [x] task 3
 
 ```go
     this is a code block

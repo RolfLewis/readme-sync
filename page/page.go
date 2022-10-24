@@ -33,13 +33,20 @@ func ProcessPage(ctx context.Context, path string) error {
 		),
 	)
 
-	// taken from https://github.com/yuin/goldmark/blob/master/extension/table.go
 	md.Parser().AddOptions(
 		parser.WithParagraphTransformers(
+			// https://github.com/yuin/goldmark/blob/c71a97b8372876d63528b54cedecf1104530fe3b/extension/table.go#L542
 			util.Prioritized(extension.NewTableParagraphTransformer(), 200),
 		),
 		parser.WithASTTransformers(
+			// https://github.com/yuin/goldmark/blob/c71a97b8372876d63528b54cedecf1104530fe3b/extension/table.go#L542
 			util.Prioritized(extension.NewTableASTTransformer(), 0),
+		),
+		parser.WithInlineParsers(
+			// https://github.com/yuin/goldmark/blob/c71a97b8372876d63528b54cedecf1104530fe3b/extension/strikethrough.go#L110
+			util.Prioritized(extension.NewStrikethroughParser(), 500),
+			// https://github.com/yuin/goldmark/blob/c71a97b8372876d63528b54cedecf1104530fe3b/extension/tasklist.go#L109
+			util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
 		),
 	)
 
