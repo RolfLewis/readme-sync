@@ -1,7 +1,0 @@
-# Ironically, the linter picks this file up as a markdown file
-.markdownlintignore
-# Temporary files until full unit tests are complete
-tests/*.md
-test.md
-# Explains manual testing
-!tests/testing.md

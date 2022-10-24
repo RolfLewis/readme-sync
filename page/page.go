@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/rolflewis/readme-sync/renderer"
+	markdown "github.com/rolflewis/goldmark-down"
 
 	"github.com/yuin/goldmark"
 	meta "github.com/yuin/goldmark-meta"
@@ -29,7 +29,7 @@ func ProcessPage(ctx context.Context, path string) error {
 			),
 		),
 		goldmark.WithRenderer(
-			gren.NewRenderer(gren.WithNodeRenderers(util.Prioritized(renderer.NewMarkdown(), 1000))),
+			gren.NewRenderer(gren.WithNodeRenderers(util.Prioritized(markdown.NewMarkdown(), 1000))),
 		),
 	)
 
