@@ -16,3 +16,6 @@ vendor/
 
 # environment/secrets
 .env
+
+# temp testing files
+test/

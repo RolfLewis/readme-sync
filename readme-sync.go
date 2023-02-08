@@ -4,19 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
-	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/rolflewis/readme-sync/config"
-	"github.com/rolflewis/readme-sync/page"
+	"github.com/rolflewis/readme-sync/docs"
+	"github.com/rolflewis/readme-sync/readme"
 	"golang.org/x/xerrors"
 )
-
-const defaultConfigFile = "config.yml"
-const defaultSourceDirectory = "docs"
-const defaultApiKey = "apikey"
-const defaultTargetVersion = "version"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -44,54 +39,53 @@ func main() {
 	}
 }
 
-func push(ctx context.Context, fs *flag.FlagSet, args []string) error {
-	var prune, dry, force, unhide bool
-	var configPath, sourcePath, categoryList string
-
-	fs.BoolVar(&prune, "prune", false, "if set, remotes pages with no local counterpart will be removed")
-	fs.BoolVar(&dry, "dry", false, "if set, performs all processing short of modifying remote resources")
-	fs.BoolVar(&force, "force", false, "if set, skips change detection and pushes all pages")
-	fs.BoolVar(&unhide, "unhide", false, "if set, overrides hiding on pages and exposes all")
-	fs.StringVar(&configPath, "config", "", "path to configuration file")
-	fs.StringVar(&sourcePath, "source", "docs", "path to source file/directory")
-	fs.StringVar(&categoryList, "categories", "", "comma separated list of categories")
+func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
+	var path string
+	fs.StringVar(&path, "path", "", "path to docs root")
 
 	if err := fs.Parse(args); err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
 
-	categories := strings.Split(categoryList, ",")
+	if path == "" {
+		return xerrors.New("empty path")
+	}
 
-	cfg, err := config.NewConfig(configPath)
+	client, err := readme.NewClient(ctx, os.Getenv("README_APIKEY"), "")
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
 
-	// only use global categories list if nothing was passed to command
-	if len(categories) == 0 {
-		categories = cfg.Categories
-	}
-
-	// no point in running if we have no categories
-	if len(categories) == 0 {
-		return xerrors.New("no categories provided")
-	}
-
-	fileInfo, err := os.Stat(sourcePath)
+	catalog, err := docs.WalkCatalog(ctx, path)
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
 
-	if !fileInfo.IsDir() {
-		if err := page.ProcessPage(ctx, sourcePath); err != nil {
+	for cat := range catalog.Categories {
+		if err := docs.ProcessCategory(ctx, client, cat); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
-		return nil
 	}
 
-	// unimplemented
-	return xerrors.New("not implemented")
+	for _, doc := range catalog.Docs {
+		if doc.Parent == "" {
+			log.Println("processing")
+			if err := docs.ProcessDoc(ctx, client, doc); err != nil {
+				return xerrors.Errorf(": %w", err)
+			}
+		}
+	}
 
+	for _, doc := range catalog.Docs {
+		if doc.Parent != "" {
+			log.Println("processing child")
+			if err := docs.ProcessDoc(ctx, client, doc); err != nil {
+				return xerrors.Errorf(": %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 type commandDescription struct {
@@ -108,12 +102,12 @@ type commandDefinition struct {
 }
 
 var commands = map[string]commandDefinition{
-	"push": {
+	"walk": {
 		desc: commandDescription{
-			"Push Documents to Remote ReadMe Site",
-			"This is filler",
-			"readme-sync push [--prune]",
+			"Walk local docs folder, testing",
+			"this is filler",
+			"readme-sync walk ./path/to/docs/root",
 		},
-		function: push,
+		function: walk,
 	},
 }
