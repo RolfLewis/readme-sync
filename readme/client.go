@@ -13,6 +13,7 @@ import (
 type Client struct {
 	apiKey  string
 	version string
+	url     string
 }
 
 func NewClient(ctx context.Context, apiKey string, version string) (*Client, error) {
@@ -23,13 +24,14 @@ func NewClient(ctx context.Context, apiKey string, version string) (*Client, err
 	c := Client{
 		apiKey:  apiKey,
 		version: version,
+		url:     "https://dash.readme.com",
 	}
 
 	return &c, nil
 }
 
 // caller must close response body
-func (c *Client) do(method, url string, body any) (*http.Response, error) {
+func (c *Client) do(method, path string, body any) (*http.Response, error) {
 	var payload io.Reader
 	if body != nil {
 		buffer := new(bytes.Buffer)
@@ -39,6 +41,7 @@ func (c *Client) do(method, url string, body any) (*http.Response, error) {
 		payload = buffer
 	}
 
+	url := c.url + path // unified host url
 	req, err := http.NewRequest(method, url, payload)
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)

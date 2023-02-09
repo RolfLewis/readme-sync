@@ -3,13 +3,11 @@ package docs
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/adrg/frontmatter"
-	"github.com/google/go-cmp/cmp"
 	"github.com/gosimple/slug"
 	"github.com/rolflewis/readme-sync/readme"
 	"golang.org/x/xerrors"
@@ -43,6 +41,9 @@ func WalkCatalog(ctx context.Context, docsPath string) (Catalog, error) {
 			return Catalog{}, xerrors.New("found non-dir in categories layer")
 		}
 		categorySlug := slug.Make(cat.Name())
+		if categorySlug != cat.Name() {
+			return Catalog{}, xerrors.New("category folder name not slugified - should be named " + categorySlug)
+		}
 		if _, dup := catalog.Categories[categorySlug]; dup {
 			return Catalog{}, xerrors.New("duplicate category slug detected")
 		}
@@ -135,7 +136,7 @@ func ProcessDoc(ctx context.Context, c *readme.Client, metadata DocMetadata) err
 	var matter docFrontMatter
 	rest, err := frontmatter.MustParse(f, &matter)
 	if err != nil {
-		return xerrors.Errorf("path=%v: %w", metadata.Filepath, err)
+		return xerrors.Errorf(": %w", err)
 	}
 
 	if err := matter.validate(); err != nil {
@@ -159,19 +160,17 @@ func ProcessDoc(ctx context.Context, c *readme.Client, metadata DocMetadata) err
 	}
 
 	if existing == (readme.Document{}) {
-		log.Println("create doc")
+		fmt.Printf("Creating Doc with Slug %v\n", document.Slug)
 		if err := c.CreateDoc(ctx, document); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 	} else if existing != document {
-		log.Println(existing.Parent, existing.Slug)
-		log.Println(cmp.Diff(existing, document))
-		log.Println("edit doc")
+		fmt.Printf("Updating Doc with Slug %v\n", document.Slug)
 		if err := c.PutDoc(ctx, document); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 	} else {
-		log.Println("skipping")
+		fmt.Printf("No Change to Doc with Slug %v\n", document.Slug)
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -24,18 +23,10 @@ func main() {
 		return
 	}
 
-	command := os.Args[1]
-	arguments := os.Args[2:]
-
-	definition, valid := commands[command]
-	if !valid {
-		fmt.Printf("Invalid command provided: %v\n", command)
-		return
-	}
-
-	flags := flag.NewFlagSet(command, flag.ContinueOnError)
-	if err := definition.function(context.Background(), flags, arguments); err != nil {
+	flags := flag.NewFlagSet("", flag.ContinueOnError)
+	if err := walk(context.Background(), flags, os.Args[1:]); err != nil {
 		fmt.Printf("%+v", err)
+		return
 	}
 }
 
@@ -61,15 +52,27 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 		return xerrors.Errorf(": %w", err)
 	}
 
+	renameMap := make(map[string]string)
+	renameMap["engineering"] = "Rename Test 1"
+
 	for cat := range catalog.Categories {
-		if err := docs.ProcessCategory(ctx, client, cat); err != nil {
+		metadata := docs.CatMetadata{
+			Slug:  cat,
+			Title: cat,
+		}
+
+		title, ok := renameMap[cat]
+		if ok {
+			metadata.Title = title
+		}
+
+		if err := docs.ProcessCategory(ctx, client, metadata); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 	}
 
 	for _, doc := range catalog.Docs {
 		if doc.Parent == "" {
-			log.Println("processing")
 			if err := docs.ProcessDoc(ctx, client, doc); err != nil {
 				return xerrors.Errorf(": %w", err)
 			}
@@ -78,36 +81,66 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 
 	for _, doc := range catalog.Docs {
 		if doc.Parent != "" {
-			log.Println("processing child")
 			if err := docs.ProcessDoc(ctx, client, doc); err != nil {
 				return xerrors.Errorf(": %w", err)
 			}
 		}
 	}
 
+	if err := prune(context.Background(), client, catalog); err != nil {
+		return xerrors.Errorf(": %w", err)
+	}
+
 	return nil
 }
 
-type commandDescription struct {
-	title   string
-	body    string
-	example string
-}
+func prune(ctx context.Context, client *readme.Client, catalog docs.Catalog) error {
+	cats, err := client.GetCategories(ctx)
+	if err != nil {
+		return xerrors.Errorf(": %w", err)
+	}
 
-type commandFunction func(ctx context.Context, fs *flag.FlagSet, args []string) error
+	for _, cat := range cats {
+		// Deleting a category automatically removes all contained docs, saving time on the next step
+		if _, found := catalog.Categories[cat.Slug]; !found {
+			fmt.Printf("Pruning Category with Slug %v\n", cat.Slug)
+			if err := client.DeleteCategory(ctx, cat.Slug); err != nil {
+				return xerrors.Errorf(": %w", err)
+			}
+			continue
+		}
+		// Prune docs inside present categories, children first
+		docs, err := client.GetDocsForCategory(ctx, cat.Slug)
+		if err != nil {
+			return xerrors.Errorf(": %w", err)
+		}
 
-type commandDefinition struct {
-	desc     commandDescription
-	function commandFunction
-}
+		pruneDoc := func(doc readme.Document) error {
+			if _, found := catalog.Docs[doc.Slug]; !found {
+				fmt.Printf("Pruning Doc with Slug %v\n", doc.Slug)
+				if err := client.DeleteDoc(ctx, doc.Slug); err != nil {
+					return xerrors.Errorf(": %w", err)
+				}
+			}
+			return nil
+		}
+		// Children first
+		for _, doc := range docs {
+			if doc.Parent != "" {
+				if err := pruneDoc(doc); err != nil {
+					return xerrors.Errorf(": %w", err)
+				}
+			}
+		}
+		// Non-children last
+		for _, doc := range docs {
+			if doc.Parent == "" {
+				if err := pruneDoc(doc); err != nil {
+					return xerrors.Errorf(": %w", err)
+				}
+			}
+		}
+	}
 
-var commands = map[string]commandDefinition{
-	"walk": {
-		desc: commandDescription{
-			"Walk local docs folder, testing",
-			"this is filler",
-			"readme-sync walk ./path/to/docs/root",
-		},
-		function: walk,
-	},
+	return nil
 }

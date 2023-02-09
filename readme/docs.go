@@ -16,7 +16,8 @@ type apiErrorResponse struct {
 }
 
 type Document struct {
-	Slug     string `json:"-"`
+	Id       string `json:"_id,omitempty"`
+	Slug     string `json:"slug"`
 	Title    string `json:"title"`
 	Excerpt  string `json:"excerpt"`
 	Body     string `json:"body"`
@@ -27,8 +28,8 @@ type Document struct {
 }
 
 func (c *Client) PutDoc(ctx context.Context, doc Document) error {
-	url := fmt.Sprintf("https://dash.readme.com/api/v1/docs/%v", doc.Slug)
-	res, err := c.do(http.MethodPut, url, doc)
+	path := fmt.Sprintf("/api/v1/docs/%v", doc.Slug)
+	res, err := c.do(http.MethodPut, path, doc)
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
@@ -50,9 +51,8 @@ func handleErrorResponse(body io.Reader) error {
 }
 
 func (c *Client) GetDoc(ctx context.Context, slug string) (Document, error) {
-	url := fmt.Sprintf("https://dash.readme.com/api/v1/docs/%v", slug)
-
-	res, err := c.do(http.MethodGet, url, nil)
+	path := fmt.Sprintf("/api/v1/docs/%v", slug)
+	res, err := c.do(http.MethodGet, path, nil)
 	if err != nil {
 		return Document{}, xerrors.Errorf(": %w", err)
 	}
@@ -123,7 +123,7 @@ func (c *Client) getCategorySlugForId(ctx context.Context, id string) (string, e
 			return cat.Slug, nil
 		}
 	}
-	return "", xerrors.New("no matching category found for id")
+	return "", xerrors.New("no matching category found for id " + id)
 }
 
 func (c *Client) getDocSlugForId(ctx context.Context, catSlug, docId string) (string, error) {
@@ -145,8 +145,8 @@ func (c *Client) getDocSlugForId(ctx context.Context, catSlug, docId string) (st
 }
 
 func (c *Client) CreateDoc(ctx context.Context, doc Document) error {
-	url := "https://dash.readme.com/api/v1/docs/"
-	res, err := c.do(http.MethodPost, url, doc)
+	path := "/api/v1/docs/"
+	res, err := c.do(http.MethodPost, path, doc)
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
@@ -159,15 +159,25 @@ func (c *Client) CreateDoc(ctx context.Context, doc Document) error {
 	return nil
 }
 
-type objectStub struct {
-	Id   string `json:"_id"`
-	Slug string `json:"slug"`
+func (c *Client) DeleteDoc(ctx context.Context, slug string) error {
+	path := fmt.Sprintf("/api/v1/docs/%v", slug)
+	res, err := c.do(http.MethodDelete, path, nil)
+	if err != nil {
+		return xerrors.Errorf(": %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusNoContent {
+		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
+	}
+
+	return nil
 }
 
 // TODO: add auto paging
-func (c *Client) GetDocsForCategory(ctx context.Context, slug string) ([]objectStub, error) {
-	url := fmt.Sprintf("https://dash.readme.com/api/v1/categories/%v/docs", slug)
-	res, err := c.do(http.MethodGet, url, nil)
+func (c *Client) GetDocsForCategory(ctx context.Context, slug string) ([]Document, error) {
+	path := fmt.Sprintf("/api/v1/categories/%v/docs?perPage=100", slug)
+	res, err := c.do(http.MethodGet, path, nil)
 	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
@@ -177,9 +187,26 @@ func (c *Client) GetDocsForCategory(ctx context.Context, slug string) ([]objectS
 		return nil, xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
-	var stubs []objectStub
-	if err := json.NewDecoder(res.Body).Decode(&stubs); err != nil {
+	type respDoc struct {
+		Document
+		Children []Document `json:"children"`
+	}
+
+	var respList []respDoc
+	if err := json.NewDecoder(res.Body).Decode(&respList); err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
-	return stubs, nil
+
+	var docs []Document
+	for _, resp := range respList {
+		resp.Category = slug
+		docs = append(docs, resp.Document)
+		for _, child := range resp.Children {
+			child.Category = slug
+			child.Parent = resp.Slug
+			docs = append(docs, child)
+		}
+	}
+
+	return docs, nil
 }
