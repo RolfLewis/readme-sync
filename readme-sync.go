@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/rolflewis/readme-sync/config"
 	"github.com/rolflewis/readme-sync/docs"
 	"github.com/rolflewis/readme-sync/readme"
 	"golang.org/x/xerrors"
@@ -42,7 +43,12 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 		return xerrors.New("empty path")
 	}
 
-	client, err := readme.NewClient(ctx, os.Getenv("README_APIKEY"), "")
+	cfg, err := config.NewConfig("")
+	if err != nil {
+		return xerrors.Errorf(": %w", err)
+	}
+
+	client, err := readme.NewClient(ctx, cfg.Key, cfg.Version)
 	if err != nil {
 		return xerrors.Errorf(": %w", err)
 	}
@@ -52,8 +58,27 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 		return xerrors.Errorf(": %w", err)
 	}
 
-	renameMap := make(map[string]string)
-	renameMap["engineering"] = "Rename Test 1"
+	// Create the category config map
+	catConfigs := make(map[string]config.CategoryConfig)
+	for _, catCfg := range cfg.Categories {
+		catConfigs[catCfg.Slug] = catCfg
+	}
+
+	// Make sure all categories in the catalog are represented in the config
+	for cat := range catalog.Categories {
+		if _, found := catConfigs[cat]; !found {
+			msg := fmt.Sprintf("Top-level folder with slug \"%v\" does not have a matching category entry in the configuration file", cat)
+			return xerrors.New(msg)
+		}
+	}
+
+	// Make sure all categories in the config are represented in the catalog
+	for cat := range catConfigs {
+		if _, found := catalog.Categories[cat]; !found {
+			msg := fmt.Sprintf("Category configuration with slug \"%v\" does not have a matching top-level folder in the provided path", cat)
+			return xerrors.New(msg)
+		}
+	}
 
 	for cat := range catalog.Categories {
 		metadata := docs.CatMetadata{
@@ -61,9 +86,9 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 			Title: cat,
 		}
 
-		title, ok := renameMap[cat]
+		catCfg, ok := catConfigs[cat]
 		if ok {
-			metadata.Title = title
+			metadata.Title = catCfg.Title
 		}
 
 		if err := docs.ProcessCategory(ctx, client, metadata); err != nil {

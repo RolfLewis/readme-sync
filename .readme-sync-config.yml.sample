@@ -1,0 +1,9 @@
+---
+categories:
+  - slug: category1
+    title: My First Category
+  - slug: category2
+    title: ""
+  - slug: category3
+
+version: v1.0

@@ -1,20 +1,23 @@
 package config
 
 import (
-	"errors"
 	"os"
 
 	"golang.org/x/xerrors"
 	"gopkg.in/yaml.v3"
 )
 
-const defaultConfigFile = "config.yml"
+const defaultConfigFile = ".readme-sync-config.yml"
+
+type CategoryConfig struct {
+	Slug  string `yaml:"slug"`
+	Title string `yaml:"title"`
+}
 
 type Config struct {
-	APIKey     string
-	Version    string
-	Categories []string               `yaml:"categories"`
-	Filters    map[string]interface{} `yaml:"filters"`
+	Categories []CategoryConfig `yaml:"categories"`
+	Version    string           `yaml:"version"`
+	Key        string           `yaml:"-"`
 }
 
 func NewConfig(path string) (Config, error) {
@@ -22,18 +25,25 @@ func NewConfig(path string) (Config, error) {
 		path = defaultConfigFile
 	}
 
-	var cfg Config
-	buffer, err := os.ReadFile(path)
-	if err == nil {
-		if err := yaml.Unmarshal(buffer, &cfg); err != nil {
-			return Config{}, xerrors.Errorf(": %w", err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	cfgFile, err := os.Open(path)
+	if err != nil {
 		return Config{}, xerrors.Errorf(": %w", err)
 	}
 
-	cfg.APIKey = os.Getenv("README_API_KEY")
-	cfg.Version = os.Getenv("README_VERSION")
+	var cfg Config
+	if err := yaml.NewDecoder(cfgFile).Decode(&cfg); err != nil {
+		return Config{}, xerrors.Errorf(": %w", err)
+	}
+
+	// only source key from environment to prevent users from accidentally misplacing keys
+	key, ok := os.LookupEnv("README_APIKEY")
+	if !ok {
+		return Config{}, xerrors.New("README_APIKEY not found in environment")
+	}
+	if key == "" {
+		return Config{}, xerrors.New("README_APIKEY cannot be an empty value")
+	}
+	cfg.Key = key
 
 	return cfg, nil
 }

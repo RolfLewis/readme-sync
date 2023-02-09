@@ -19,3 +19,6 @@ vendor/
 
 # temp testing files
 test/
+
+# application config file
+.readme-sync-config.yml
