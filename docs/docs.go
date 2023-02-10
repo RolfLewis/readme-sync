@@ -160,17 +160,17 @@ func ProcessDoc(ctx context.Context, c *readme.Client, metadata DocMetadata) err
 	}
 
 	if existing == (readme.Document{}) {
-		fmt.Printf("Creating Doc with Slug %v\n", document.Slug)
+		fmt.Printf("Creating doc with slug \"%v\"\n", document.Slug)
 		if err := c.CreateDoc(ctx, document); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
-	} else if existing != document {
-		fmt.Printf("Updating Doc with Slug %v\n", document.Slug)
+	} else if document.Id = existing.Id; existing != document {
+		fmt.Printf("Updating doc with slug \"%v\"\n", document.Slug)
 		if err := c.PutDoc(ctx, document); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 	} else {
-		fmt.Printf("No Change to Doc with Slug %v\n", document.Slug)
+		fmt.Printf("No change to doc with slug \"%v\"\n", document.Slug)
 	}
 	return nil
 }

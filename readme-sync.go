@@ -87,7 +87,7 @@ func walk(ctx context.Context, fs *flag.FlagSet, args []string) error {
 		}
 
 		catCfg, ok := catConfigs[cat]
-		if ok {
+		if ok && catCfg.Title != "" { // readme does not accept empty titles
 			metadata.Title = catCfg.Title
 		}
 
@@ -128,7 +128,7 @@ func prune(ctx context.Context, client *readme.Client, catalog docs.Catalog) err
 	for _, cat := range cats {
 		// Deleting a category automatically removes all contained docs, saving time on the next step
 		if _, found := catalog.Categories[cat.Slug]; !found {
-			fmt.Printf("Pruning Category with Slug %v\n", cat.Slug)
+			fmt.Printf("Pruning category with slug \"%v\"\n", cat.Slug)
 			if err := client.DeleteCategory(ctx, cat.Slug); err != nil {
 				return xerrors.Errorf(": %w", err)
 			}
@@ -142,7 +142,7 @@ func prune(ctx context.Context, client *readme.Client, catalog docs.Catalog) err
 
 		pruneDoc := func(doc readme.Document) error {
 			if _, found := catalog.Docs[doc.Slug]; !found {
-				fmt.Printf("Pruning Doc with Slug %v\n", doc.Slug)
+				fmt.Printf("Pruning doc with slug \"%v\"\n", doc.Slug)
 				if err := client.DeleteDoc(ctx, doc.Slug); err != nil {
 					return xerrors.Errorf(": %w", err)
 				}

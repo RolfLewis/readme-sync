@@ -3,7 +3,9 @@ package docs
 import (
 	"context"
 	"fmt"
+	"log"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/rolflewis/readme-sync/readme"
 	"golang.org/x/xerrors"
 )
@@ -26,18 +28,19 @@ func ProcessCategory(ctx context.Context, c *readme.Client, metadata CatMetadata
 	}
 
 	if existing == (readme.Category{}) {
-		fmt.Printf("Creating Category with Slug %v\n", cat.Slug)
+		fmt.Printf("Creating category with slug \"%v\"\n", cat.Slug)
 		if err := c.CreateCategory(ctx, cat); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 		return nil
 	} else if cat.Id = existing.Id; existing != cat {
-		fmt.Printf("Updating Category with Slug %v\n", cat.Slug)
+		log.Println(cmp.Diff(existing, cat))
+		fmt.Printf("Updating category with slug \"%v\"\n", cat.Slug)
 		if err := c.UpdateCategory(ctx, cat); err != nil {
 			return xerrors.Errorf(": %w", err)
 		}
 	} else {
-		fmt.Printf("No Change to Category with Slug %v\n", cat.Slug)
+		fmt.Printf("No change to category with slug \"%v\"\n", cat.Slug)
 	}
 	return nil
 }

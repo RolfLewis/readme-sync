@@ -28,15 +28,12 @@ type Document struct {
 }
 
 func (c *Client) PutDoc(ctx context.Context, doc Document) error {
-	path := fmt.Sprintf("/api/v1/docs/%v", doc.Slug)
-	res, err := c.do(http.MethodPut, path, doc)
-	if err != nil {
+	if _, err := do[Document](c, doOpts{
+		method:         http.MethodPut,
+		path:           fmt.Sprintf("/api/v1/docs/%v", doc.Slug),
+		expectedStatus: http.StatusOK,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	return nil
@@ -51,79 +48,42 @@ func handleErrorResponse(body io.Reader) error {
 }
 
 func (c *Client) GetDoc(ctx context.Context, slug string) (Document, error) {
-	path := fmt.Sprintf("/api/v1/docs/%v", slug)
-	res, err := c.do(http.MethodGet, path, nil)
+	type response struct {
+		Document
+		ParentId   string `json:"parentDoc"`
+		CategoryId string `json:"category"`
+	}
+
+	resp, err := do[response](c, doOpts{
+		method:         http.MethodGet,
+		path:           fmt.Sprintf("/api/v1/docs/%v", slug),
+		expectedStatus: http.StatusOK,
+	})
 	if err != nil {
 		return Document{}, xerrors.Errorf(": %w", err)
 	}
-	defer res.Body.Close()
 
-	if res.StatusCode == http.StatusNotFound {
+	if resp.Document == (Document{}) {
 		return Document{}, nil
 	}
 
-	if res.StatusCode != http.StatusOK {
-		return Document{}, xerrors.Errorf(": %w", handleErrorResponse(res.Body))
-	}
-
-	var response struct {
-		Title     string `json:"title"`
-		Excerpt   string `json:"excerpt"`
-		Type      string `json:"type"`
-		Body      string `json:"body"`
-		ParentDoc string `json:"parentDoc"`
-		Category  string `json:"category"`
-		Hidden    bool   `json:"hidden"`
-		Order     int    `json:"order"`
-	}
-	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
-		return Document{}, xerrors.Errorf(": %w", err)
-	}
-
-	retDoc := Document{
-		Slug:    slug,
-		Title:   response.Title,
-		Excerpt: response.Excerpt,
-		Order:   response.Order,
-		Hidden:  response.Hidden,
-		Body:    response.Body,
-	}
-
 	// TODO: this may burn API calls - good candidate for a preload/caching setup
-	catSlug, err := c.getCategorySlugForId(ctx, response.Category)
+	catSlug, err := c.getCategorySlugForId(ctx, resp.CategoryId)
 	if err != nil {
 		return Document{}, xerrors.Errorf(": %w", err)
 	}
-	retDoc.Category = catSlug
+	resp.Category = catSlug
 
-	if response.ParentDoc != "" {
+	if resp.ParentId != "" {
 		// TODO: this may burn API calls - good candidate for a preload/caching setup
-		parSlug, err := c.getDocSlugForId(ctx, catSlug, response.ParentDoc)
+		parSlug, err := c.getDocSlugForId(ctx, catSlug, resp.ParentId)
 		if err != nil {
 			return Document{}, xerrors.Errorf(": %w", err)
 		}
-		retDoc.Parent = parSlug
+		resp.Parent = parSlug
 	}
 
-	return retDoc, nil
-}
-
-func (c *Client) getCategorySlugForId(ctx context.Context, id string) (string, error) {
-	// get doc's category slug.
-	// as of writing, the readme api does not allow querying docs or cats by id, only slug.
-	// however, the api does not allow you to get a doc's parent or category slugs directly, only id.
-	// thus, this listing + match workaround is easiest workaround to implement this lookup
-	cats, err := c.GetCategories(ctx)
-	if err != nil {
-		return "", xerrors.Errorf(": %w", err)
-	}
-
-	for _, cat := range cats {
-		if cat.Id == id {
-			return cat.Slug, nil
-		}
-	}
-	return "", xerrors.New("no matching category found for id " + id)
+	return resp.Document, nil
 }
 
 func (c *Client) getDocSlugForId(ctx context.Context, catSlug, docId string) (string, error) {
@@ -145,55 +105,43 @@ func (c *Client) getDocSlugForId(ctx context.Context, catSlug, docId string) (st
 }
 
 func (c *Client) CreateDoc(ctx context.Context, doc Document) error {
-	path := "/api/v1/docs/"
-	res, err := c.do(http.MethodPost, path, doc)
-	if err != nil {
+	if _, err := do[Document](c, doOpts{
+		method:         http.MethodPost,
+		path:           "/api/v1/docs/",
+		expectedStatus: http.StatusCreated,
+		body:           doc,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusCreated {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	return nil
 }
 
 func (c *Client) DeleteDoc(ctx context.Context, slug string) error {
-	path := fmt.Sprintf("/api/v1/docs/%v", slug)
-	res, err := c.do(http.MethodDelete, path, nil)
-	if err != nil {
+	if _, err := do[Document](c, doOpts{
+		method:         http.MethodDelete,
+		path:           fmt.Sprintf("/api/v1/docs/%v", slug),
+		expectedStatus: http.StatusNoContent,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusNoContent {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	return nil
 }
 
-// TODO: add auto paging
+// endpoint does not support paging at time of writing
 func (c *Client) GetDocsForCategory(ctx context.Context, slug string) ([]Document, error) {
-	path := fmt.Sprintf("/api/v1/categories/%v/docs?perPage=100", slug)
-	res, err := c.do(http.MethodGet, path, nil)
-	if err != nil {
-		return nil, xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, xerrors.Errorf(": %w", handleErrorResponse(res.Body))
-	}
-
 	type respDoc struct {
 		Document
 		Children []Document `json:"children"`
 	}
 
-	var respList []respDoc
-	if err := json.NewDecoder(res.Body).Decode(&respList); err != nil {
+	respList, err := do[[]respDoc](c, doOpts{
+		method:         http.MethodGet,
+		path:           fmt.Sprintf("/api/v1/categories/%v/docs", slug),
+		expectedStatus: http.StatusOK,
+	})
+	if err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
 

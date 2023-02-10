@@ -2,7 +2,6 @@ package readme
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -18,18 +17,8 @@ type Category struct {
 // TODO: add auto paging
 func (c *Client) GetCategories(ctx context.Context) ([]Category, error) {
 	path := "/api/v1/categories"
-	res, err := c.do(http.MethodGet, path, nil)
+	cats, err := doAllPages[Category](c, http.MethodGet, path)
 	if err != nil {
-		return nil, xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, xerrors.Errorf(": %w", handleErrorResponse(res.Body))
-	}
-
-	var cats []Category
-	if err := json.NewDecoder(res.Body).Decode(&cats); err != nil {
 		return nil, xerrors.Errorf(": %w", err)
 	}
 
@@ -37,23 +26,12 @@ func (c *Client) GetCategories(ctx context.Context) ([]Category, error) {
 }
 
 func (c *Client) GetCategory(ctx context.Context, slug string) (Category, error) {
-	path := fmt.Sprintf("/api/v1/categories/%v", slug)
-	res, err := c.do(http.MethodGet, path, nil)
+	cat, err := do[Category](c, doOpts{
+		method:         http.MethodGet,
+		path:           fmt.Sprintf("/api/v1/categories/%v", slug),
+		expectedStatus: http.StatusOK,
+	})
 	if err != nil {
-		return Category{}, xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode == http.StatusNotFound {
-		return Category{}, nil
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return Category{}, xerrors.Errorf(": %w", handleErrorResponse(res.Body))
-	}
-
-	var cat Category
-	if err := json.NewDecoder(res.Body).Decode(&cat); err != nil {
 		return Category{}, xerrors.Errorf(": %w", err)
 	}
 	return cat, nil
@@ -65,20 +43,17 @@ func (c *Client) GetCategory(ctx context.Context, slug string) (Category, error)
 // This is necessary due to lack of slug field on category creation.
 func (c *Client) CreateCategory(ctx context.Context, cat Category) error {
 	// First, create the category
-
 	createPayload := Category{
 		Title: cat.Slug,
 	}
 
-	path := "/api/v1/categories"
-	res, err := c.do(http.MethodPost, path, createPayload)
-	if err != nil {
+	if _, err := do[Category](c, doOpts{
+		method:         http.MethodPost,
+		path:           "/api/v1/categories",
+		expectedStatus: http.StatusCreated,
+		body:           createPayload,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusCreated {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	// Second, update it if the slug != title
@@ -96,31 +71,44 @@ func (c *Client) UpdateCategory(ctx context.Context, cat Category) error {
 		Title: cat.Title,
 	}
 
-	path := fmt.Sprintf("/api/v1/categories/%v", cat.Slug)
-	res, err := c.do(http.MethodPut, path, updatePayload)
-	if err != nil {
+	if _, err := do[Category](c, doOpts{
+		method:         http.MethodPut,
+		path:           fmt.Sprintf("/api/v1/categories/%v", cat.Slug),
+		expectedStatus: http.StatusOK,
+		body:           updatePayload,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	return nil
 }
 
 func (c *Client) DeleteCategory(ctx context.Context, slug string) error {
-	path := fmt.Sprintf("/api/v1/categories/%v", slug)
-	res, err := c.do(http.MethodDelete, path, nil)
-	if err != nil {
+	if _, err := do[Category](c, doOpts{
+		method:         http.MethodDelete,
+		path:           fmt.Sprintf("/api/v1/categories/%v", slug),
+		expectedStatus: http.StatusNoContent,
+	}); err != nil {
 		return xerrors.Errorf(": %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusNoContent {
-		return xerrors.Errorf(": %w", handleErrorResponse(res.Body))
 	}
 
 	return nil
+}
+
+func (c *Client) getCategorySlugForId(ctx context.Context, id string) (string, error) {
+	// get doc's category slug.
+	// as of writing, the readme api does not allow querying docs or cats by id, only slug.
+	// however, the api does not allow you to get a doc's parent or category slugs directly, only id.
+	// thus, this listing + match workaround is easiest workaround to implement this lookup
+	cats, err := c.GetCategories(ctx)
+	if err != nil {
+		return "", xerrors.Errorf(": %w", err)
+	}
+
+	for _, cat := range cats {
+		if cat.Id == id {
+			return cat.Slug, nil
+		}
+	}
+	return "", xerrors.New("no matching category found for id " + id)
 }
